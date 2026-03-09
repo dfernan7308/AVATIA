@@ -30,17 +30,44 @@ export const auth = {
     }
 };
 
-// Generador de imágenes
-export async function generateImage(prompt) {
+// Generador de imágenes (con soporte para referencia visual)
+export async function generateImage(prompt, referenceImage = null) {
     const apiKey = CONFIG.OPENAI_V5_API_KEY;
     const client = new OpenAI({
         apiKey: apiKey,
         dangerouslyAllowBrowser: true
     });
 
+    let styleDescription = "";
+
+    // Si hay una imagen de referencia, la analizamos primero con GPT-4o Vision para extraer el ADN artístico
+    if (referenceImage) {
+        try {
+            const visionResponse = await client.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: "Analiza el estilo artístico de esta imagen (colores, técnica, iluminación, atmósfera). Describe el estilo en 3 frases muy técnicas y precisas para que un generador de imágenes lo replique. No describas el contenido, solo el estilo visual." },
+                            { type: "image_url", image_url: { url: referenceImage.url } }
+                        ]
+                    }
+                ]
+            });
+            styleDescription = visionResponse.choices[0].message.content;
+        } catch (err) {
+            console.error("Error analizando estilo:", err);
+        }
+    }
+
+    const finalPrompt = styleDescription
+        ? `Generate an image with this style: ${styleDescription}. Subject of the image: ${prompt}`
+        : prompt;
+
     const response = await client.images.generate({
-        model: "dall-e-3", // Se usa DALL-E 3 por defecto o el modelo superior disponible
-        prompt: prompt,
+        model: "dall-e-3", // Se usa DALL-E 3 por defecto
+        prompt: finalPrompt,
         n: 1,
         size: "1024x1024",
     });

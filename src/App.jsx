@@ -23,6 +23,7 @@ function App() {
 
   // Estados de Imagenes
   const [imagePrompt, setImagePrompt] = useState('');
+  const [imageRef, setImageRef] = useState(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -309,15 +310,25 @@ function App() {
     }
   };
 
+  const handleRefImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => setImageRef({ name: file.name, url: reader.result, type: file.type });
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleGenerateImage = async () => {
-    if (!imagePrompt.trim() || isGenerating) return;
+    if (!imagePrompt) return alert('Por favor, ingresa una descripción para la imagen.');
     setIsGenerating(true);
+    setGeneratedImageUrl(null);
     try {
-      const url = await generateImage(imagePrompt);
+      const url = await generateImage(imagePrompt, imageRef);
       setGeneratedImageUrl(url);
-    } catch (err) {
-      console.error(err);
-      alert('Error generando imagen');
+    } catch (error) {
+      console.error(error);
+      alert('Error al generar la imagen. Verifica tu API Key.');
     } finally {
       setIsGenerating(false);
     }
@@ -598,6 +609,21 @@ function App() {
                 </div>
 
                 <div className="image-controls">
+                  <div className="style-ref-box glass">
+                    <label className="ref-upload-btn">
+                      <Paperclip size={16} />
+                      {imageRef ? 'Estilo Cargado' : 'Subir Imagen de Estilo'}
+                      <input type="file" className="sr-only" onChange={handleRefImageChange} accept="image/*" />
+                    </label>
+                    {imageRef && (
+                      <div className="ref-preview-small">
+                        <img src={imageRef.url} alt="Style Ref" />
+                        <X size={12} className="remove-ref" onClick={() => setImageRef(null)} />
+                      </div>
+                    )}
+                    <p className="ref-hint">AVATIA analizará esta imagen para replicar su estilo artístico.</p>
+                  </div>
+
                   <textarea
                     placeholder="Describe la imagen que tienes en mente con todo detalle..."
                     value={imagePrompt}
