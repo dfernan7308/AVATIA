@@ -24,6 +24,7 @@ function App() {
   // Estados de Imagenes
   const [imagePrompt, setImagePrompt] = useState('');
   const [imageRef, setImageRef] = useState(null);
+  const [imageEngine, setImageEngine] = useState('dalle'); // 'dalle' o 'gemini'
   const [generatedImageUrl, setGeneratedImageUrl] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -324,7 +325,7 @@ function App() {
     setIsGenerating(true);
     setGeneratedImageUrl(null);
     try {
-      const url = await generateImage(imagePrompt, imageRef);
+      const url = await generateImage(imagePrompt, imageRef, imageEngine);
       setGeneratedImageUrl(url);
     } catch (error) {
       console.error(error);
@@ -512,8 +513,9 @@ function App() {
                     onChange={(e) => setSelectedModel(e.target.value)}
                     className="model-select-ui"
                   >
-                    <option value="openai-v5">OpenAI Version 5.2 (Pro)</option>
-                    <option value="openai-v4">OpenAI Version 4 (o)</option>
+                    <option value="openai-v5">OpenAI GPT-5.2 (Pro)</option>
+                    <option value="openai-v4">OpenAI GPT-4o</option>
+                    <option value="gemini">Google Gemini 2.0 Flash</option>
                     <option value="groq">Groq (Llama 3.3)</option>
                     <option value="cerebras">Cerebras (Llama 3.1)</option>
                   </select>
@@ -622,6 +624,21 @@ function App() {
                       </div>
                     )}
                     <p className="ref-hint">AVATIA analizará esta imagen para replicar su estilo artístico.</p>
+                  </div>
+
+                  <div className="engine-toggle-box glass">
+                    <button
+                      className={`engine-btn ${imageEngine === 'dalle' ? 'active' : ''}`}
+                      onClick={() => setImageEngine('dalle')}
+                    >
+                      DALL-E 3
+                    </button>
+                    <button
+                      className={`engine-btn ${imageEngine === 'gemini' ? 'active' : ''}`}
+                      onClick={() => setImageEngine('gemini')}
+                    >
+                      Google Imagen 3
+                    </button>
                   </div>
 
                   <textarea

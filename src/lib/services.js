@@ -30,8 +30,28 @@ export const auth = {
     }
 };
 
-// Generador de imágenes (con soporte para referencia visual)
-export async function generateImage(prompt, referenceImage = null) {
+// Generador de imágenes (con soporte para referencia visual e Imagen 3)
+export async function generateImage(prompt, referenceImage = null, engine = 'dalle') {
+    if (engine === 'gemini') {
+        const apiKey = CONFIG.GEMINI_API_KEY;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:generateImages?key=${apiKey}`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                requests: [{ prompt: prompt }]
+            })
+        });
+
+        const data = await response.json();
+        if (data.images && data.images[0]) {
+            return `data:image/png;base64,${data.images[0].image.encodedImage}`;
+        }
+        throw new Error("Error en Google Imagen 3");
+    }
+
+    // DALL-E 3 Flow
     const apiKey = CONFIG.OPENAI_V5_API_KEY;
     const client = new OpenAI({
         apiKey: apiKey,
@@ -75,9 +95,62 @@ export async function generateImage(prompt, referenceImage = null) {
     return response.data[0].url;
 }
 
+// Handler para Chat de Gemini
+async function processWithGemini(messages) {
+    const apiKey = CONFIG.GEMINI_API_KEY;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+    // Transformar mensajes al formato de Gemini
+    const contents = messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+    }));
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents })
+    });
+
+    if (!response.ok) throw new Error("Error en Gemini API");
+
+    // Retornamos un objeto compatible con el stream de OpenAI para no romper el front
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    return {
+        async *[Symbol.asyncIterator]() {
+            let buffer = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const json = JSON.parse(line.replace("data: ", ""));
+                            const text = json.candidates[0]?.content?.parts[0]?.text || "";
+                            yield { choices: [{ delta: { content: text } }] };
+                        } catch (e) { }
+                    }
+                }
+            }
+        }
+    };
+}
+
 // Factory para los diferentes proveedores de IA
 export async function processWithAI(modelProvider, messages, attachment = null) {
+    if (modelProvider === 'gemini') {
+        return await processWithGemini(messages);
+    }
+
     let apiKey, baseURL, modelName;
+    // ... rest of logic for OpenAI, Groq, Cerebras
 
     // Prompt del sistema para guiar la generación de documentos
     // NOTA: Cambiamos a 'system' por defecto ya que Groq y Cerebras no entienden 'developer'

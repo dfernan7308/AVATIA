@@ -9,6 +9,7 @@ export const CONFIG = {
 
     SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || "",
     SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+    GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY || "",
 };
 
 export const MODELS = {
