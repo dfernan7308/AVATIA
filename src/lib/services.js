@@ -94,7 +94,7 @@ export async function generateImage(prompt, referenceImage = null, engine = 'dal
                         content: [
                             {
                                 type: "text",
-                                text: `Analiza esta imagen y crea un prompt para DALL-E 3 que preserve el sujeto y la composición exacta, pero aplique este cambio: "${prompt}".`
+                                text: `Analyze this image with surgical precision. Describe EVERY detail (subject face/features, clothing, pose, lighting, exact background). The user wants a new image that is IDENTICAL in structure but with this change: "${prompt}". Create a DALL-E 3 prompt in English that describes everything to remain exactly the same and the specific change. Respond ONLY with the prompt.`
                             },
                             { type: "image_url", image_url: { url: referenceImage.url } }
                         ]
@@ -102,6 +102,7 @@ export async function generateImage(prompt, referenceImage = null, engine = 'dal
                 ]
             });
             detailedPrompt = visionResponse.choices[0].message.content;
+            console.log("DALL-E Ref Prompt:", detailedPrompt);
         } catch (err) {
             console.error("Error en visión:", err);
         }
