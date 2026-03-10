@@ -30,25 +30,29 @@ export const auth = {
     }
 };
 
-// Generador de imágenes (con soporte para referencia visual e Imagen 3)
+// Generador de imágenes (con soporte para referencia visual e Imagen 4)
 export async function generateImage(prompt, referenceImage = null, engine = 'dalle') {
     if (engine === 'gemini') {
         const apiKey = CONFIG.GEMINI_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:generateImages?key=${apiKey}`;
+        // Usamos Imagen 4 con el método predict
+        const url = `/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                requests: [{ prompt: prompt }]
+                instances: [{ prompt: prompt }],
+                parameters: { sampleCount: 1 }
             })
         });
 
         const data = await response.json();
-        if (data.images && data.images[0]) {
-            return `data:image/png;base64,${data.images[0].image.encodedImage}`;
+        if (data.predictions && data.predictions[0]) {
+            return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
         }
-        throw new Error("Error en Google Imagen 3");
+
+        console.error("Google API Error:", data);
+        throw new Error(data.error?.message || "Error en Google Imagen 4");
     }
 
     // DALL-E 3 Flow
@@ -95,10 +99,10 @@ export async function generateImage(prompt, referenceImage = null, engine = 'dal
     return response.data[0].url;
 }
 
-// Handler para Chat de Gemini
+// Handler para Chat de Gemini (Actualizado a Gemini 2.5 Flash)
 async function processWithGemini(messages) {
     const apiKey = CONFIG.GEMINI_API_KEY;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+    const url = `/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
 
     // Transformar mensajes al formato de Gemini
     const contents = messages.map(m => ({
@@ -112,7 +116,11 @@ async function processWithGemini(messages) {
         body: JSON.stringify({ contents })
     });
 
-    if (!response.ok) throw new Error("Error en Gemini API");
+    if (!response.ok) {
+        const errData = await response.json();
+        console.error("Gemini Error:", errData);
+        throw new Error(errData.error?.message || "Error en Gemini API");
+    }
 
     // Retornamos un objeto compatible con el stream de OpenAI para no romper el front
     const reader = response.body.getReader();

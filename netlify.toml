@@ -3,6 +3,12 @@
   publish = "dist"
 
 [[redirects]]
+  from = "/v1beta/*"
+  to = "https://generativelanguage.googleapis.com/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

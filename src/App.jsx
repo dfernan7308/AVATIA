@@ -515,7 +515,7 @@ function App() {
                   >
                     <option value="openai-v5">OpenAI GPT-5.2 (Pro)</option>
                     <option value="openai-v4">OpenAI GPT-4o</option>
-                    <option value="gemini">Google Gemini 2.0 Flash</option>
+                    <option value="gemini">Gemini 2.5 Flash (Ultra Fast)</option>
                     <option value="groq">Groq (Llama 3.3)</option>
                     <option value="cerebras">Cerebras (Llama 3.1)</option>
                   </select>
@@ -637,7 +637,7 @@ function App() {
                       className={`engine-btn ${imageEngine === 'gemini' ? 'active' : ''}`}
                       onClick={() => setImageEngine('gemini')}
                     >
-                      Google Imagen 3
+                      Google Imagen 4 (HD)
                     </button>
                   </div>
 
