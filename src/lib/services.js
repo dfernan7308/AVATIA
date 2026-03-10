@@ -37,31 +37,34 @@ export async function generateImage(prompt, referenceImage = null, engine = 'dal
 
     let detailedPrompt = prompt;
 
-    // Si hay una imagen de referencia, usamos GPT-4o para "entenderla" y fusionarla con el prompt del usuario
+    // Si hay una imagen de referencia, usamos Gemini 2.5 Flash para "entenderla" y fusionarla con el prompt del usuario
     if (referenceImage) {
         try {
-            const client = new OpenAI({ apiKey: apiKeyOpenAI, dangerouslyAllowBrowser: true });
-            const visionResponse = await client.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            {
-                                type: "text",
-                                text: `Analiza esta imagen detalladamente. El usuario quiere generar una nueva imagen basada en esta pero con el siguiente cambio: "${prompt}". 
-                                Crea un prompt descriptivo en INGLÉS que mantenga la composición, sujeto y estilo de la foto original, pero aplicando el cambio solicitado de forma natural. 
-                                Responde SOLO con el prompt en inglés.`
-                            },
-                            { type: "image_url", image_url: { url: referenceImage.url } }
+            const visionUrl = `/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKeyGemini}`;
+            // Extraer solo la parte base64 (remover 'data:image/png;base64,')
+            const base64Data = referenceImage.url.split(',')[1];
+
+            const visionResponse = await fetch(visionUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: `Analyze this image. The user wants to generate a NEW image based on this one but with this change: "${prompt}". Create a highly descriptive English prompt for an image generator (DALL-E 3 or Imagen 4) that keeps the exact composition, subject, and style, but applies the change naturally. Respond ONLY with the new English prompt.` },
+                            { inline_data: { mime_type: referenceImage.type, data: base64Data } }
                         ]
-                    }
-                ]
+                    }],
+                    generationConfig: { temperature: 0.4 }
+                })
             });
-            detailedPrompt = visionResponse.choices[0].message.content;
-            console.log("Visual Context Prompt:", detailedPrompt);
+
+            const visionData = await visionResponse.json();
+            if (visionData.candidates && visionData.candidates[0].content.parts[0].text) {
+                detailedPrompt = visionData.candidates[0].content.parts[0].text;
+                console.log("Visual Context (Gemini):", detailedPrompt);
+            }
         } catch (err) {
-            console.error("Error analizando referencia visual:", err);
+            console.error("Error analizando referencia visual con Gemini:", err);
         }
     }
 

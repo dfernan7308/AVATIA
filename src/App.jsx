@@ -329,7 +329,7 @@ function App() {
       setGeneratedImageUrl(url);
     } catch (error) {
       console.error(error);
-      alert('Error al generar la imagen. Verifica tu API Key.');
+      alert('Error: ' + (error.message || 'Error desconocido al generar la imagen'));
     } finally {
       setIsGenerating(false);
     }
