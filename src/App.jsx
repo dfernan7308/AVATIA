@@ -637,7 +637,7 @@ function App() {
                       className={`engine-btn ${imageEngine === 'gemini' ? 'active' : ''}`}
                       onClick={() => setImageEngine('gemini')}
                     >
-                      Google Imagen 4 (HD)
+                      Gemini 3.1 Flash (HD)
                     </button>
                   </div>
 

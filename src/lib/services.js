@@ -30,66 +30,83 @@ export const auth = {
     }
 };
 
-// Generador de imágenes (con soporte para referencia visual e Imagen 4)
+// Generador de imágenes (con soporte para referencia visual e Imagen 3.1/4)
 export async function generateImage(prompt, referenceImage = null, engine = 'dalle') {
     const apiKeyGemini = CONFIG.GEMINI_API_KEY;
     const apiKeyOpenAI = CONFIG.OPENAI_V5_API_KEY;
 
-    let detailedPrompt = prompt;
-
-    // Si hay una imagen de referencia, usamos Gemini 2.5 Flash para "entenderla" y fusionarla con el prompt del usuario
-    if (referenceImage) {
-        try {
-            const visionUrl = `/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKeyGemini}`;
-            // Extraer solo la parte base64 (remover 'data:image/png;base64,')
-            const base64Data = referenceImage.url.split(',')[1];
-
-            const visionResponse = await fetch(visionUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            { text: `Analyze this image. The user wants to generate a NEW image based on this one but with this change: "${prompt}". Create a highly descriptive English prompt for an image generator (DALL-E 3 or Imagen 4) that keeps the exact composition, subject, and style, but applies the change naturally. Respond ONLY with the new English prompt.` },
-                            { inline_data: { mime_type: referenceImage.type, data: base64Data } }
-                        ]
-                    }],
-                    generationConfig: { temperature: 0.4 }
-                })
-            });
-
-            const visionData = await visionResponse.json();
-            if (visionData.candidates && visionData.candidates[0].content.parts[0].text) {
-                detailedPrompt = visionData.candidates[0].content.parts[0].text;
-                console.log("Visual Context (Gemini):", detailedPrompt);
-            }
-        } catch (err) {
-            console.error("Error analizando referencia visual con Gemini:", err);
-        }
-    }
-
+    // --- MODO GEMINI (NATIVO MULTIMODAL) ---
     if (engine === 'gemini') {
-        const url = `/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKeyGemini}`;
+        const url = `/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKeyGemini}`;
+
+        const contents = [{
+            role: "user",
+            parts: []
+        }];
+
+        // Si hay referencia, la pasamos directamente al modelo (Image-to-Image nativo)
+        if (referenceImage) {
+            const base64Data = referenceImage.url.split(',')[1];
+            contents[0].parts.push({
+                inline_data: {
+                    mime_type: referenceImage.type,
+                    data: base64Data
+                }
+            });
+            contents[0].parts.push({
+                text: `Use this image as the ABSOLUTE BASE. Maintain exactly the same person, pose, and background. Change ONLY this: "${prompt}". Output the modified image.`
+            });
+        } else {
+            // Text-to-Image estándar
+            contents[0].parts.push({
+                text: `Generate a high-quality artistic image based on this description: "${prompt}"`
+            });
+        }
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                instances: [{ prompt: detailedPrompt }],
-                parameters: { sampleCount: 1 }
-            })
+            body: JSON.stringify({ contents })
         });
 
         const data = await response.json();
-        if (data.predictions && data.predictions[0]) {
-            return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
+        const imagePart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+
+        if (imagePart) {
+            return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
         }
 
-        console.error("Google API Error:", data);
-        throw new Error(data.error?.message || "Error en Google Imagen 4");
+        console.error("Google AI Error:", data);
+        throw new Error(data.error?.message || "Error en Gemini 3.1 Image Generation");
     }
 
-    // DALL-E 3 Flow
+    // --- MODO DALL-E 3 (CON ANÁLISIS VISION) ---
+    let detailedPrompt = prompt;
+
+    if (referenceImage) {
+        try {
+            const client = new OpenAI({ apiKey: apiKeyOpenAI, dangerouslyAllowBrowser: true });
+            const visionResponse = await client.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: `Analiza esta imagen y crea un prompt para DALL-E 3 que preserve el sujeto y la composición exacta, pero aplique este cambio: "${prompt}".`
+                            },
+                            { type: "image_url", image_url: { url: referenceImage.url } }
+                        ]
+                    }
+                ]
+            });
+            detailedPrompt = visionResponse.choices[0].message.content;
+        } catch (err) {
+            console.error("Error en visión:", err);
+        }
+    }
+
     const client = new OpenAI({
         apiKey: apiKeyOpenAI,
         dangerouslyAllowBrowser: true
