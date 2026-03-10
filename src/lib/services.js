@@ -101,26 +101,37 @@ export async function generateImage(prompt, referenceImage = null, engine = 'dal
                     }
                 ]
             });
-            detailedPrompt = visionResponse.choices[0].message.content;
-            console.log("DALL-E Ref Prompt:", detailedPrompt);
+            const visionContent = visionResponse.choices[0].message.content;
+            if (visionContent) {
+                detailedPrompt = visionContent;
+                console.log("DALL-E Ref Prompt:", detailedPrompt);
+            }
         } catch (err) {
-            console.error("Error en visión:", err);
+            console.error("Error en visión (GPT-4o):", err);
         }
     }
+
+    // Si por alguna razón detailedPrompt quedó vacío o null, usamos el prompt original
+    if (!detailedPrompt) detailedPrompt = prompt;
 
     const client = new OpenAI({
         apiKey: apiKeyOpenAI,
         dangerouslyAllowBrowser: true
     });
 
-    const response = await client.images.generate({
-        model: "dall-e-3",
-        prompt: detailedPrompt,
-        n: 1,
-        size: "1024x1024",
-    });
+    try {
+        const response = await client.images.generate({
+            model: "dall-e-3",
+            prompt: detailedPrompt,
+            n: 1,
+            size: "1024x1024",
+        });
 
-    return response.data[0].url;
+        return response.data[0].url;
+    } catch (err) {
+        console.error("DALL-E 3 Error:", err);
+        throw new Error(err.message || "Error al generar con DALL-E 3");
+    }
 }
 
 // Handler para Chat de Gemini (Actualizado a Gemini 2.5 Flash)
