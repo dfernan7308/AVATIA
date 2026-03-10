@@ -32,16 +32,47 @@ export const auth = {
 
 // Generador de imágenes (con soporte para referencia visual e Imagen 4)
 export async function generateImage(prompt, referenceImage = null, engine = 'dalle') {
+    const apiKeyGemini = CONFIG.GEMINI_API_KEY;
+    const apiKeyOpenAI = CONFIG.OPENAI_V5_API_KEY;
+
+    let detailedPrompt = prompt;
+
+    // Si hay una imagen de referencia, usamos GPT-4o para "entenderla" y fusionarla con el prompt del usuario
+    if (referenceImage) {
+        try {
+            const client = new OpenAI({ apiKey: apiKeyOpenAI, dangerouslyAllowBrowser: true });
+            const visionResponse = await client.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: `Analiza esta imagen detalladamente. El usuario quiere generar una nueva imagen basada en esta pero con el siguiente cambio: "${prompt}". 
+                                Crea un prompt descriptivo en INGLÉS que mantenga la composición, sujeto y estilo de la foto original, pero aplicando el cambio solicitado de forma natural. 
+                                Responde SOLO con el prompt en inglés.`
+                            },
+                            { type: "image_url", image_url: { url: referenceImage.url } }
+                        ]
+                    }
+                ]
+            });
+            detailedPrompt = visionResponse.choices[0].message.content;
+            console.log("Visual Context Prompt:", detailedPrompt);
+        } catch (err) {
+            console.error("Error analizando referencia visual:", err);
+        }
+    }
+
     if (engine === 'gemini') {
-        const apiKey = CONFIG.GEMINI_API_KEY;
-        // Usamos Imagen 4 con el método predict
-        const url = `/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+        const url = `/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKeyGemini}`;
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                instances: [{ prompt: prompt }],
+                instances: [{ prompt: detailedPrompt }],
                 parameters: { sampleCount: 1 }
             })
         });
@@ -56,42 +87,14 @@ export async function generateImage(prompt, referenceImage = null, engine = 'dal
     }
 
     // DALL-E 3 Flow
-    const apiKey = CONFIG.OPENAI_V5_API_KEY;
     const client = new OpenAI({
-        apiKey: apiKey,
+        apiKey: apiKeyOpenAI,
         dangerouslyAllowBrowser: true
     });
 
-    let styleDescription = "";
-
-    // Si hay una imagen de referencia, la analizamos primero con GPT-4o Vision para extraer el ADN artístico
-    if (referenceImage) {
-        try {
-            const visionResponse = await client.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: "Analiza el estilo artístico de esta imagen (colores, técnica, iluminación, atmósfera). Describe el estilo en 3 frases muy técnicas y precisas para que un generador de imágenes lo replique. No describas el contenido, solo el estilo visual." },
-                            { type: "image_url", image_url: { url: referenceImage.url } }
-                        ]
-                    }
-                ]
-            });
-            styleDescription = visionResponse.choices[0].message.content;
-        } catch (err) {
-            console.error("Error analizando estilo:", err);
-        }
-    }
-
-    const finalPrompt = styleDescription
-        ? `Generate an image with this style: ${styleDescription}. Subject of the image: ${prompt}`
-        : prompt;
-
     const response = await client.images.generate({
-        model: "dall-e-3", // Se usa DALL-E 3 por defecto
-        prompt: finalPrompt,
+        model: "dall-e-3",
+        prompt: detailedPrompt,
         n: 1,
         size: "1024x1024",
     });
