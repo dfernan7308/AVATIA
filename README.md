@@ -1,45 +1,59 @@
-# AVATIA - Asistente IA Avanzado (ChatGPT Clone)
+# AVATIA
 
-AVATIA es una plataforma premium que integra los modelos de IA más potentes del mercado en una interfaz elegante y funcional.
+Cliente React para chat con IA, generación de imágenes, gestión de proyectos y exportación de respuestas.
 
-## 🚀 Características
-- **Multi-Modelo**: Intercambia entre OpenAI (v4 y v5.2), Groq y Cerebras al instante.
-- **Generador de Arte**: Crea imágenes artísticas con el motor de AVATIA.
-- **Exportación Inteligente**: Genera documentos PDF, Excel, Word y PPT automáticamente.
-- **Gestión de Proyectos**: Organiza tus chats en proyectos independientes.
-- **Diseño Glassmorphism**: Interfaz moderna, oscura y fluida.
+## Qué hace
 
-## 🛠️ Configuración
+- Chat persistente con OpenAI, Gemini, Groq y Cerebras.
+- Generación de imágenes con DALL-E 3 o Gemini.
+- Exportación de respuestas a PDF, Excel, Word y PowerPoint.
+- Organización de conversaciones por proyectos o chats independientes.
+- Autenticación y persistencia con Supabase.
 
-Para proteger tus credenciales, este proyecto utiliza variables de entorno.
+## Arquitectura actual
 
-1.  **Clonar el repositorio** e instalar dependencias:
-    ```bash
-    npm install
-    ```
+- Frontend: React + Vite.
+- Base de datos y auth: Supabase.
+- Backend ligero: funciones de Netlify para ocultar API keys de proveedores de IA.
 
-2.  **Configurar Variables de Entorno**:
-    Copia el archivo de ejemplo y rellénalo con tus propias llaves:
-    ```bash
-    cp .env.example .env
-    ```
+## Configuración
 
-    Variables requeridas en el archivo `.env`:
-    - `VITE_OPENAI_V4_API_KEY`: Tu API Key de OpenAI (GPT-4o).
-    - `VITE_OPENAI_V5_API_KEY`: Tu API Key de OpenAI para el modelo 5.2.
-    - `VITE_GROQ_API_KEY`: Tu llave de Groq Cloud.
-    - `VITE_CEREBRAS_API_KEY`: Tu llave de Cerebras.
-    - `VITE_SUPABASE_URL`: URL de tu proyecto Supabase.
-    - `VITE_SUPABASE_ANON_KEY`: Anon Key de tu proyecto Supabase.
-
-3.  **Base de Datos**:
-    Ejecuta el script `supabase_schema_v3.sql` en tu editor SQL de Supabase para preparar las tablas necesarias.
-
-## 💻 Ejecución
+1. Instala dependencias:
 
 ```bash
-npm run dev
+npm install
 ```
 
----
-*Desarrollado para maximizar la productividad con Inteligencia Artificial.*
+2. Crea tu archivo de entorno:
+
+```bash
+cp .env.example .env
+```
+
+3. Completa `.env`:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `OPENAI_V4_API_KEY`
+- `OPENAI_V5_API_KEY`
+- `GROQ_API_KEY`
+- `CEREBRAS_API_KEY`
+- `GEMINI_API_KEY`
+
+4. En Supabase, ejecuta [supabase_schema_v4.sql](/Users/diegofernandez/Desktop/Antigravity%20Projects/DiegoIA/supabase_schema_v4.sql).
+
+## Desarrollo
+
+Para desarrollar con las funciones serverless activas, usa Netlify Dev:
+
+```bash
+npx netlify dev
+```
+
+Si solo quieres revisar el frontend estático, `npm run dev` sigue levantando Vite, pero las llamadas a IA dependen de las funciones de Netlify.
+
+## Build
+
+```bash
+npm run build
+```

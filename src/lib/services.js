@@ -1,272 +1,64 @@
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
 import { CONFIG } from '../config';
 
-// Inicializar Supabase
 export const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
-// Servicios de Autenticación
+async function fetchJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || data.message || `La solicitud falló (${response.status})`);
+  }
+
+  return data;
+}
+
 export const auth = {
-    signIn: async (email, password) => {
-        return await supabase.auth.signInWithPassword({ email, password });
+  signIn: async (email, password) => supabase.auth.signInWithPassword({ email, password }),
+  signUp: async (email, password) => supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: email.split('@')[0],
+      },
     },
-    signUp: async (email, password) => {
-        return await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: {
-                    full_name: email.split('@')[0],
-                }
-            }
-        });
-    },
-    signOut: async () => {
-        return await supabase.auth.signOut();
-    },
-    getSession: async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        return session;
-    }
+  }),
+  signOut: async () => supabase.auth.signOut(),
+  getSession: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
+  },
 };
 
-// Generador de imágenes (con soporte para referencia visual e Imagen 3.1/4)
 export async function generateImage(prompt, referenceImage = null, engine = 'dalle') {
-    const apiKeyGemini = CONFIG.GEMINI_API_KEY;
-    const apiKeyOpenAI = CONFIG.OPENAI_V5_API_KEY;
+  const data = await fetchJson('/.netlify/functions/ai-image', {
+    prompt,
+    referenceImage,
+    engine,
+  });
 
-    // --- MODO GEMINI (NATIVO MULTIMODAL) ---
-    if (engine === 'gemini') {
-        const url = `/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKeyGemini}`;
-
-        const contents = [{
-            role: "user",
-            parts: []
-        }];
-
-        // Si hay referencia, la pasamos directamente al modelo (Image-to-Image nativo)
-        if (referenceImage) {
-            const base64Data = referenceImage.url.split(',')[1];
-            contents[0].parts.push({
-                inline_data: {
-                    mime_type: referenceImage.type,
-                    data: base64Data
-                }
-            });
-            contents[0].parts.push({
-                text: `Use this image as the ABSOLUTE BASE. Maintain exactly the same person, pose, and background. Change ONLY this: "${prompt}". Output the modified image.`
-            });
-        } else {
-            // Text-to-Image estándar
-            contents[0].parts.push({
-                text: `Generate a high-quality artistic image based on this description: "${prompt}"`
-            });
-        }
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents })
-        });
-
-        const data = await response.json();
-        const imagePart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-
-        if (imagePart) {
-            return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
-        }
-
-        console.error("Google AI Error:", data);
-        throw new Error(data.error?.message || "Error en Gemini 3.1 Image Generation");
-    }
-
-    // --- MODO DALL-E 3 (CON ANÁLISIS VISION) ---
-    let detailedPrompt = prompt;
-
-    if (referenceImage) {
-        try {
-            const client = new OpenAI({ apiKey: apiKeyOpenAI, dangerouslyAllowBrowser: true });
-            const visionResponse = await client.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            {
-                                type: "text",
-                                text: `Analyze this image with surgical precision. Describe EVERY detail (subject face/features, clothing, pose, lighting, exact background). The user wants a new image that is IDENTICAL in structure but with this change: "${prompt}". Create a DALL-E 3 prompt in English that describes everything to remain exactly the same and the specific change. Respond ONLY with the prompt.`
-                            },
-                            { type: "image_url", image_url: { url: referenceImage.url } }
-                        ]
-                    }
-                ]
-            });
-            const visionContent = visionResponse.choices[0].message.content;
-            if (visionContent) {
-                detailedPrompt = visionContent;
-                console.log("DALL-E Ref Prompt:", detailedPrompt);
-            }
-        } catch (err) {
-            console.error("Error en visión (GPT-4o):", err);
-        }
-    }
-
-    // Si por alguna razón detailedPrompt quedó vacío o null, usamos el prompt original
-    if (!detailedPrompt) detailedPrompt = prompt;
-
-    const client = new OpenAI({
-        apiKey: apiKeyOpenAI,
-        dangerouslyAllowBrowser: true
-    });
-
-    try {
-        const response = await client.images.generate({
-            model: "dall-e-3",
-            prompt: detailedPrompt,
-            n: 1,
-            size: "1024x1024",
-        });
-
-        return response.data[0].url;
-    } catch (err) {
-        console.error("DALL-E 3 Error:", err);
-        throw new Error(err.message || "Error al generar con DALL-E 3");
-    }
+  return data.imageUrl;
 }
 
-// Handler para Chat de Gemini (Actualizado a Gemini 2.5 Flash)
-async function processWithGemini(messages) {
-    const apiKey = CONFIG.GEMINI_API_KEY;
-    const url = `/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
-
-    // Transformar mensajes al formato de Gemini
-    const contents = messages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-    }));
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents })
-    });
-
-    if (!response.ok) {
-        const errData = await response.json();
-        console.error("Gemini Error:", errData);
-        throw new Error(errData.error?.message || "Error en Gemini API");
-    }
-
-    // Retornamos un objeto compatible con el stream de OpenAI para no romper el front
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    return {
-        async *[Symbol.asyncIterator]() {
-            let buffer = "";
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        try {
-                            const json = JSON.parse(line.replace("data: ", ""));
-                            const text = json.candidates[0]?.content?.parts[0]?.text || "";
-                            yield { choices: [{ delta: { content: text } }] };
-                        } catch (e) { }
-                    }
-                }
-            }
-        }
-    };
-}
-
-// Factory para los diferentes proveedores de IA
 export async function processWithAI(modelProvider, messages, attachment = null) {
-    if (modelProvider === 'gemini') {
-        return await processWithGemini(messages);
-    }
+  const data = await fetchJson('/.netlify/functions/ai-chat', {
+    modelProvider,
+    messages,
+    attachment,
+  });
 
-    let apiKey, baseURL, modelName;
-    // ... rest of logic for OpenAI, Groq, Cerebras
+  const content = data.content || '';
 
-    // Prompt del sistema para guiar la generación de documentos
-    // NOTA: Cambiamos a 'system' por defecto ya que Groq y Cerebras no entienden 'developer'
-    const systemPrompt = {
-        role: (modelProvider.startsWith('openai')) ? 'developer' : 'system',
-        content: `Eres AVATIA, un asistente experto de elite. 
-        Si el usuario te pide generar un documento (PDF, Excel, Word/DOCX, PowerPoint/PPT):
-        1. Genera el contenido de forma clara y estructurada en tu respuesta de texto.
-        2. Para Excel: Usa formato de tabla Markdown.
-        3. Para PPT: Usa títulos y puntos clave claros.
-        AVATIA tiene botones especiales para convertir tu respuesta en estos archivos de forma automática.`
-    };
-
-    const finalMessagesForSanitizing = [systemPrompt, ...messages];
-
-    switch (modelProvider) {
-        case 'openai-v4':
-            apiKey = CONFIG.OPENAI_V4_API_KEY;
-            baseURL = 'https://api.openai.com/v1';
-            modelName = 'gpt-4o';
-            break;
-        case 'openai-v5':
-            apiKey = CONFIG.OPENAI_V5_API_KEY;
-            baseURL = 'https://api.openai.com/v1';
-            modelName = 'gpt-5.2-chat-latest';
-            break;
-        case 'groq':
-            apiKey = CONFIG.GROQ_API_KEY;
-            baseURL = 'https://api.groq.com/openai/v1';
-            modelName = 'llama-3.3-70b-versatile';
-            break;
-        case 'cerebras':
-            apiKey = CONFIG.CEREBRAS_API_KEY;
-            baseURL = 'https://api.cerebras.ai/v1';
-            modelName = 'llama3.1-8b'; // Actualizado a 8b que es el disponible
-            break;
-        default:
-            throw new Error('Proveedor no soportado');
-    }
-
-    const client = new OpenAI({
-        apiKey: apiKey,
-        baseURL: baseURL,
-        dangerouslyAllowBrowser: true
-    });
-
-    // Sanitizar los mensajes para que solo tengan 'role' y 'content'
-    const sanitizedMessages = finalMessagesForSanitizing.map(msg => ({
-        role: msg.role,
-        content: msg.content
-    }));
-
-    // Si hay un adjunto (imagen), preparamos el mensaje multimodal
-    let finalMessages = [...sanitizedMessages];
-    if (attachment && attachment.type.startsWith('image/')) {
-        const lastMessage = finalMessages[finalMessages.length - 1];
-        finalMessages[finalMessages.length - 1] = {
-            role: 'user',
-            content: [
-                { type: 'text', text: lastMessage.content },
-                {
-                    type: 'image_url',
-                    image_url: { url: attachment.url }
-                }
-            ]
-        };
-    }
-
-    const response = await client.chat.completions.create({
-        model: modelName,
-        messages: finalMessages,
-        stream: true,
-    });
-
-    return response;
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield { choices: [{ delta: { content } }] };
+    },
+  };
 }
