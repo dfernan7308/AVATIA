@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Paperclip,
   Send,
+  Square,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -24,6 +25,7 @@ function ChatView({
   onKeyDown,
   onRemoveAttachment,
   onSend,
+  onStop,
   selectedModel,
   setSelectedModel,
 }) {
@@ -109,6 +111,11 @@ function ChatView({
               onChange={(event) => onInputChange(event.target.value)}
               onKeyDown={onKeyDown}
             />
+            {isTyping && (
+              <button className="panic-btn" onClick={onStop} type="button">
+                <Square size={16} /> SOS
+              </button>
+            )}
             <button className="send-btn-main" onClick={onSend} disabled={isTyping}>
               <Send size={18} />
             </button>

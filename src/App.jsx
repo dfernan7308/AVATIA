@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import AppModal from './components/AppModal';
@@ -44,6 +44,8 @@ function App() {
   const [fileManagementData, setFileManagementData] = useState([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [modal, setModal] = useState(initialModalState);
+  const chatAbortRef = useRef(null);
+  const imageAbortRef = useRef(null);
 
   const currentUserId = session?.user?.id ?? null;
 
@@ -230,8 +232,29 @@ function App() {
     return () => mediaQuery.removeEventListener('change', syncSidebarState);
   }, []);
 
+  useEffect(() => () => {
+    chatAbortRef.current?.abort();
+    imageAbortRef.current?.abort();
+  }, []);
+
   const toggleSidebar = useCallback(() => {
     setIsSidebarOpen((current) => !current);
+  }, []);
+
+  const cancelChatProcessing = useCallback(() => {
+    if (chatAbortRef.current) {
+      chatAbortRef.current.abort();
+      chatAbortRef.current = null;
+    }
+    setIsTyping(false);
+  }, []);
+
+  const cancelImageProcessing = useCallback(() => {
+    if (imageAbortRef.current) {
+      imageAbortRef.current.abort();
+      imageAbortRef.current = null;
+    }
+    setIsGenerating(false);
   }, []);
 
   const openModal = useCallback((type, title, initialValue, onConfirm) => {
@@ -272,9 +295,11 @@ function App() {
   }, [isRegistering, loginForm.email, loginForm.password]);
 
   const handleLogout = useCallback(async () => {
+    cancelChatProcessing();
+    cancelImageProcessing();
     await auth.signOut();
     setSession(null);
-  }, []);
+  }, [cancelChatProcessing, cancelImageProcessing]);
 
   const handleCreateProject = useCallback(() => {
     openModal('input', 'Crear Nuevo Proyecto', '', async (name) => {
@@ -402,6 +427,8 @@ function App() {
       return;
     }
 
+    cancelChatProcessing();
+
     let currentChat = activeChat;
     if (!currentChat) {
       const title = input.trim().slice(0, 30) || 'Nuevo Chat';
@@ -437,6 +464,8 @@ function App() {
     };
 
     const conversation = [...messages, userMessage];
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
 
     setMessages(conversation);
     setInput('');
@@ -449,7 +478,9 @@ function App() {
         throw insertUserMessageError;
       }
 
-      const stream = await processWithAI(selectedModel, conversation, currentAttachment);
+      const stream = await processWithAI(selectedModel, conversation, currentAttachment, {
+        signal: controller.signal,
+      });
       let assistantContent = '';
 
       setMessages((previous) => [...previous, { role: 'assistant', content: '', model: selectedModel }]);
@@ -476,13 +507,20 @@ function App() {
         throw insertAssistantError;
       }
     } catch (error) {
+      if (error.name === 'AbortError') {
+        setMessages(conversation);
+        return;
+      }
       console.error('Error enviando mensaje:', error);
       alert(`No se pudo completar la solicitud: ${error.message || 'error desconocido'}`);
-      setMessages(messages);
+      setMessages(conversation);
     } finally {
+      if (chatAbortRef.current === controller) {
+        chatAbortRef.current = null;
+      }
       setIsTyping(false);
     }
-  }, [activeChat, activeProject, attachment, currentUserId, input, messages, selectedModel]);
+  }, [activeChat, activeProject, attachment, cancelChatProcessing, currentUserId, input, messages, selectedModel]);
 
   const handleFileChange = useCallback((event) => {
     const file = event.target.files?.[0];
@@ -524,19 +562,31 @@ function App() {
       return;
     }
 
+    cancelImageProcessing();
+    const controller = new AbortController();
+    imageAbortRef.current = controller;
+
     setIsGenerating(true);
     setGeneratedImageUrl(null);
 
     try {
-      const url = await generateImage(imagePrompt, imageRef, imageEngine);
+      const url = await generateImage(imagePrompt, imageRef, imageEngine, {
+        signal: controller.signal,
+      });
       setGeneratedImageUrl(url);
     } catch (error) {
+      if (error.name === 'AbortError') {
+        return;
+      }
       console.error('Error generando imagen:', error);
       alert(`Error: ${error.message || 'Error desconocido al generar la imagen'}`);
     } finally {
+      if (imageAbortRef.current === controller) {
+        imageAbortRef.current = null;
+      }
       setIsGenerating(false);
     }
-  }, [imageEngine, imagePrompt, imageRef]);
+  }, [cancelImageProcessing, imageEngine, imagePrompt, imageRef]);
 
   const handleInputKeyDown = useCallback((event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -607,6 +657,7 @@ function App() {
               onKeyDown={handleInputKeyDown}
               onRemoveAttachment={() => setAttachment(null)}
               onSend={handleSend}
+              onStop={cancelChatProcessing}
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
             />
@@ -621,6 +672,7 @@ function App() {
               onImagePromptChange={setImagePrompt}
               onRefImageChange={handleRefImageChange}
               onRemoveRef={() => setImageRef(null)}
+              onStop={cancelImageProcessing}
               setImageEngine={setImageEngine}
             />
           ) : (

@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Loader2, Paperclip, X } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Paperclip, Square, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 function ImageView({
@@ -11,6 +11,7 @@ function ImageView({
   onImagePromptChange,
   onRefImageChange,
   onRemoveRef,
+  onStop,
   setImageEngine,
 }) {
   const MotionDiv = motion.div;
@@ -75,9 +76,16 @@ function ImageView({
             value={imagePrompt}
             onChange={(event) => onImagePromptChange(event.target.value)}
           />
-          <button className="gen-btn" onClick={onGenerate} disabled={isGenerating}>
-            {isGenerating ? 'Generando...' : 'Generar Obra de Arte'}
-          </button>
+          <div className="image-actions">
+            <button className="gen-btn" onClick={onGenerate} disabled={isGenerating}>
+              {isGenerating ? 'Generando...' : 'Generar Obra de Arte'}
+            </button>
+            {isGenerating && (
+              <button className="panic-btn panic-btn-wide" onClick={onStop} type="button">
+                <Square size={16} /> SOS Detener
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </MotionDiv>
