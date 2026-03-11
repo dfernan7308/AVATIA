@@ -8,6 +8,7 @@ import FilesView from './components/FilesView';
 import ImageView from './components/ImageView';
 import LoginScreen from './components/LoginScreen';
 import { exportToFile } from './lib/fileGenerator';
+import { normalizeImageUpload } from './lib/imageUpload';
 import { auth, generateImage, processWithAI, supabase } from './lib/services';
 import './App.css';
 
@@ -522,38 +523,34 @@ function App() {
     }
   }, [activeChat, activeProject, attachment, cancelChatProcessing, currentUserId, input, messages, selectedModel]);
 
-  const handleFileChange = useCallback((event) => {
+  const handleFileChange = useCallback(async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setAttachment({
-        url: reader.result,
-        name: file.name,
-        type: file.type,
-      });
-    };
-    reader.readAsDataURL(file);
+    try {
+      const normalizedFile = await normalizeImageUpload(file);
+      setAttachment(normalizedFile);
+    } catch (error) {
+      alert(error.message || 'No se pudo preparar la imagen seleccionada.');
+      event.target.value = '';
+    }
   }, []);
 
-  const handleRefImageChange = useCallback((event) => {
+  const handleRefImageChange = useCallback(async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImageRef({
-        name: file.name,
-        url: reader.result,
-        type: file.type,
-      });
-    };
-    reader.readAsDataURL(file);
+    try {
+      const normalizedFile = await normalizeImageUpload(file);
+      setImageRef(normalizedFile);
+    } catch (error) {
+      alert(error.message || 'No se pudo preparar la imagen de referencia.');
+      event.target.value = '';
+    }
   }, []);
 
   const handleGenerateImage = useCallback(async () => {
