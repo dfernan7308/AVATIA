@@ -6,6 +6,7 @@ import AppSidebar from './components/AppSidebar';
 import ChatView from './components/ChatView';
 import FilesView from './components/FilesView';
 import ImageView from './components/ImageView';
+import KnowledgeView from './components/KnowledgeView';
 import LoginScreen from './components/LoginScreen';
 import { exportToFile } from './lib/fileGenerator';
 import { normalizeImageUpload } from './lib/imageUpload';
@@ -43,6 +44,16 @@ function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [attachment, setAttachment] = useState(null);
   const [fileManagementData, setFileManagementData] = useState([]);
+  const [knowledgeEntries, setKnowledgeEntries] = useState([]);
+  const [selectedKnowledgeEntryId, setSelectedKnowledgeEntryId] = useState(null);
+  const [knowledgeFilter, setKnowledgeFilter] = useState('');
+  const [knowledgeForm, setKnowledgeForm] = useState({
+    title: '',
+    category: '',
+    tags: '',
+    content: '',
+  });
+  const [isKnowledgeSaving, setIsKnowledgeSaving] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [modal, setModal] = useState(initialModalState);
   const chatAbortRef = useRef(null);
@@ -180,14 +191,47 @@ function App() {
     setFileManagementData(data ?? []);
   }, [currentUserId]);
 
+  const fetchKnowledgeEntries = useCallback(async () => {
+    if (!currentUserId) {
+      setKnowledgeEntries([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('knowledge_entries')
+      .select('*')
+      .eq('user_id', currentUserId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Error cargando base de conocimiento:', error);
+      return;
+    }
+
+    const nextEntries = data ?? [];
+    setKnowledgeEntries(nextEntries);
+    if (nextEntries.length > 0 && !selectedKnowledgeEntryId) {
+      const first = nextEntries[0];
+      setSelectedKnowledgeEntryId(first.id);
+      setKnowledgeForm({
+        title: first.title || '',
+        category: first.category || '',
+        tags: (first.tags || []).join(', '),
+        content: first.content || '',
+      });
+    }
+  }, [currentUserId, selectedKnowledgeEntryId]);
+
   useEffect(() => {
     if (!session) {
       setProjects([]);
       setChats([]);
       setMessages([]);
       setFileManagementData([]);
+      setKnowledgeEntries([]);
       setActiveProject(null);
       setActiveChat(null);
+      setSelectedKnowledgeEntryId(null);
       return;
     }
 
@@ -219,7 +263,10 @@ function App() {
     if (activeTab === 'files') {
       fetchFilesFromMessages();
     }
-  }, [activeTab, fetchFilesFromMessages]);
+    if (activeTab === 'knowledge') {
+      fetchKnowledgeEntries();
+    }
+  }, [activeTab, fetchFilesFromMessages, fetchKnowledgeEntries]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(min-width: 961px)');
@@ -423,6 +470,108 @@ function App() {
     setFileManagementData((previous) => previous.filter((message) => message.id !== messageId));
   }, [currentUserId]);
 
+  const handleCreateKnowledgeEntry = useCallback(() => {
+    setSelectedKnowledgeEntryId(null);
+    setKnowledgeForm({
+      title: '',
+      category: '',
+      tags: '',
+      content: '',
+    });
+  }, []);
+
+  const handleSelectKnowledgeEntry = useCallback((entry) => {
+    setSelectedKnowledgeEntryId(entry.id);
+    setKnowledgeForm({
+      title: entry.title || '',
+      category: entry.category || '',
+      tags: (entry.tags || []).join(', '),
+      content: entry.content || '',
+    });
+  }, []);
+
+  const handleSaveKnowledgeEntry = useCallback(async () => {
+    if (!currentUserId || !knowledgeForm.title.trim() || !knowledgeForm.content.trim()) {
+      alert('La entrada necesita al menos título y contenido.');
+      return;
+    }
+
+    setIsKnowledgeSaving(true);
+
+    const payload = {
+      user_id: currentUserId,
+      title: knowledgeForm.title.trim(),
+      category: knowledgeForm.category.trim() || null,
+      tags: knowledgeForm.tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+      content: knowledgeForm.content.trim(),
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      if (selectedKnowledgeEntryId) {
+        const { error } = await supabase
+          .from('knowledge_entries')
+          .update(payload)
+          .eq('id', selectedKnowledgeEntryId)
+          .eq('user_id', currentUserId);
+
+        if (error) {
+          throw error;
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('knowledge_entries')
+          .insert([payload])
+          .select()
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        setSelectedKnowledgeEntryId(data.id);
+      }
+
+      await fetchKnowledgeEntries();
+    } catch (error) {
+      console.error('Error guardando entrada:', error);
+      alert(`No se pudo guardar la entrada: ${error.message || 'error desconocido'}`);
+    } finally {
+      setIsKnowledgeSaving(false);
+    }
+  }, [currentUserId, fetchKnowledgeEntries, knowledgeForm, selectedKnowledgeEntryId]);
+
+  const handleDeleteKnowledgeEntry = useCallback(async (entryId) => {
+    if (!entryId || !currentUserId) {
+      return;
+    }
+
+    openModal('confirm', 'Eliminar entrada', '¿Seguro que quieres borrar esta entrada de la base de conocimiento?', async () => {
+      const { error } = await supabase
+        .from('knowledge_entries')
+        .delete()
+        .eq('id', entryId)
+        .eq('user_id', currentUserId);
+
+      if (error) {
+        console.error('Error eliminando entrada:', error);
+        return;
+      }
+
+      setKnowledgeEntries((previous) => previous.filter((entry) => entry.id !== entryId));
+      setSelectedKnowledgeEntryId(null);
+      setKnowledgeForm({
+        title: '',
+        category: '',
+        tags: '',
+        content: '',
+      });
+    });
+  }, [currentUserId, openModal]);
+
   const handleSend = useCallback(async () => {
     if ((!input.trim() && !attachment) || !currentUserId) {
       return;
@@ -597,6 +746,14 @@ function App() {
     [chats, searchQuery],
   );
 
+  const filteredKnowledgeEntries = useMemo(
+    () => knowledgeEntries.filter((entry) => {
+      const haystack = `${entry.title || ''} ${entry.category || ''} ${(entry.tags || []).join(' ')} ${entry.content || ''}`.toLowerCase();
+      return haystack.includes(knowledgeFilter.toLowerCase());
+    }),
+    [knowledgeEntries, knowledgeFilter],
+  );
+
   if (authLoading) {
     return <div className="loading-screen"><Loader2 className="animate-spin" /></div>;
   }
@@ -673,10 +830,26 @@ function App() {
               setImageEngine={setImageEngine}
             />
           ) : (
+            activeTab === 'knowledge' ? (
+              <KnowledgeView
+                entries={filteredKnowledgeEntries}
+                filter={knowledgeFilter}
+                form={knowledgeForm}
+                isSaving={isKnowledgeSaving}
+                onCreate={handleCreateKnowledgeEntry}
+                onDelete={handleDeleteKnowledgeEntry}
+                onFilterChange={setKnowledgeFilter}
+                onFormChange={(field, value) => setKnowledgeForm((current) => ({ ...current, [field]: value }))}
+                onSave={handleSaveKnowledgeEntry}
+                onSelect={handleSelectKnowledgeEntry}
+                selectedEntryId={selectedKnowledgeEntryId}
+              />
+            ) : (
             <FilesView
               fileManagementData={fileManagementData}
               onDeleteFile={deleteMessageFile}
             />
+            )
           )}
         </AnimatePresence>
       </main>

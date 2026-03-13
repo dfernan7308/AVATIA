@@ -1,5 +1,6 @@
 import {
   BrainCircuit,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -145,6 +146,9 @@ function AppSidebar({
           </button>
           <button className={`nav-btn ${activeTab === 'files' ? 'active' : ''}`} onClick={() => setActiveTab('files')}>
             <Database size={18} /> <span>Archivos</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'knowledge' ? 'active' : ''}`} onClick={() => setActiveTab('knowledge')}>
+            <BookOpen size={18} /> <span>Base</span>
           </button>
           <button className="nav-btn logout-btn" onClick={onLogout}>
             <X size={18} /> <span>Cerrar Sesión</span>
